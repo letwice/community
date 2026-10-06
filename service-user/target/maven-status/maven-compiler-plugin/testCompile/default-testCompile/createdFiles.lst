@@ -1,0 +1,5 @@
+community/store/user/domain/UserRepositoryIntegrationTest.class
+community/store/user/domain/UserTest.class
+community/store/user/domain/UserPayoutSummaryTest.class
+community/store/user/config/AccountNumberConverterTest.class
+community/store/user/service/UserServiceTest.class

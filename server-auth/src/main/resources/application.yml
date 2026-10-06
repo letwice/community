@@ -1,0 +1,45 @@
+server:
+  port: 9600
+  servlet:
+    context-path: /auth
+
+spring:
+  application:
+    name: server-auth
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/community_store?createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:root}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+  flyway:
+    # One schema shared by all services (PoC decision); each service keeps its own history table.
+    table: flyway_schema_history_auth
+    baseline-on-migrate: true
+    baseline-version: 0
+
+community:
+  security:
+    resource-server: false
+  services:
+    user-url: ${COMMUNITY_SERVICES_USER_URL:http://localhost:9601/service-user}
+    notification-url: ${COMMUNITY_SERVICES_NOTIFICATION_URL:http://localhost:9602/service-notification}
+  auth:
+    university-email-domain: ${COMMUNITY_AUTH_UNIVERSITY_EMAIL_DOMAIN:university.com}
+    expose-verification-token: ${COMMUNITY_AUTH_EXPOSE_VERIFICATION_TOKEN:true}
+    # PoC-only client secrets for service-to-service (client_credentials) tokens.
+    clients:
+      - id: service-user
+        secret: ${SERVICE_USER_CLIENT_SECRET:service-user-dev-secret}
+      - id: service-notification
+        secret: ${SERVICE_NOTIFICATION_CLIENT_SECRET:service-notification-dev-secret}
+      - id: service-product
+        secret: ${SERVICE_PRODUCT_CLIENT_SECRET:service-product-dev-secret}
+      - id: postman
+        secret: ${POSTMAN_CLIENT_SECRET:postman-dev-secret}
+
+logging:
+  level:
+    community.store: DEBUG

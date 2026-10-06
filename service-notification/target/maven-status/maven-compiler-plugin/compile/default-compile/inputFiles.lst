@@ -1,0 +1,11 @@
+/Users/lethu.dlamini/Github/community-store-poc/service-notification/src/main/java/community/store/notification/NotificationApplication.java
+/Users/lethu.dlamini/Github/community-store-poc/service-notification/src/main/java/community/store/notification/domain/DispatchStatus.java
+/Users/lethu.dlamini/Github/community-store-poc/service-notification/src/main/java/community/store/notification/domain/Notification.java
+/Users/lethu.dlamini/Github/community-store-poc/service-notification/src/main/java/community/store/notification/domain/NotificationRepository.java
+/Users/lethu.dlamini/Github/community-store-poc/service-notification/src/main/java/community/store/notification/domain/NotificationType.java
+/Users/lethu.dlamini/Github/community-store-poc/service-notification/src/main/java/community/store/notification/domain/RelatedEntityType.java
+/Users/lethu.dlamini/Github/community-store-poc/service-notification/src/main/java/community/store/notification/dto/NotificationResponse.java
+/Users/lethu.dlamini/Github/community-store-poc/service-notification/src/main/java/community/store/notification/dto/UnreadCountResponse.java
+/Users/lethu.dlamini/Github/community-store-poc/service-notification/src/main/java/community/store/notification/service/NotificationService.java
+/Users/lethu.dlamini/Github/community-store-poc/service-notification/src/main/java/community/store/notification/web/FrontendNotificationController.java
+/Users/lethu.dlamini/Github/community-store-poc/service-notification/src/main/java/community/store/notification/web/SystemNotificationController.java

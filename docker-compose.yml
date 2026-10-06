@@ -1,0 +1,87 @@
+# Community Store PoC — the whole app (database, 4 services, mobile web app).
+# Easiest: double-click "Start" (see GETTING_STARTED.md). Manually: docker compose up -d --build
+# Reset all data: docker compose down -v
+x-service-env: &service-env
+  SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/community_store?createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false
+  SPRING_DATASOURCE_USERNAME: root
+  SPRING_DATASOURCE_PASSWORD: root
+  JWK_SET_URI: http://server-auth:9600/auth/.well-known/jwks.json
+  COMMUNITY_SERVICES_AUTH_URL: http://server-auth:9600/auth
+  COMMUNITY_SERVICES_USER_URL: http://service-user:9601/service-user
+  COMMUNITY_SERVICES_NOTIFICATION_URL: http://service-notification:9602/service-notification
+  COMMUNITY_SERVICES_PRODUCT_URL: http://service-product:9603/service-product
+  TZ: ${TZ:-Africa/Johannesburg}
+
+x-java-service: &java-service
+  environment: *service-env
+  depends_on:
+    mysql:
+      condition: service_healthy
+  restart: on-failure
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: community_store
+      TZ: ${TZ:-Africa/Johannesburg}
+    ports:
+      # The setup script picks a free port and stores it in .env as MYSQL_HOST_PORT.
+      - "${MYSQL_HOST_PORT:-3306}:3306"
+    volumes:
+      - community-store-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  server-auth:
+    <<: *java-service
+    build: { context: ., target: server-auth }
+    image: community-store/server-auth
+    ports:
+      - "9600:9600"
+
+  service-user:
+    <<: *java-service
+    build: { context: ., target: service-user }
+    image: community-store/service-user
+    ports:
+      - "9601:9601"
+
+  service-notification:
+    <<: *java-service
+    build: { context: ., target: service-notification }
+    image: community-store/service-notification
+    ports:
+      - "9602:9602"
+
+  service-product:
+    <<: *java-service
+    build: { context: ., target: service-product }
+    image: community-store/service-product
+    ports:
+      - "9603:9603"
+
+  web-mobile:
+    build: { context: ., target: web-mobile }
+    image: community-store/web-mobile
+    ports:
+      - "9700:80"
+    restart: on-failure
+
+  # Only runs on request: docker compose --profile tests run --rm api-tests
+  api-tests:
+    build: { context: ., target: api-tests }
+    image: community-store/api-tests
+    profiles: ["tests"]
+    depends_on:
+      - server-auth
+      - service-user
+      - service-notification
+      - service-product
+
+volumes:
+  community-store-mysql-data:

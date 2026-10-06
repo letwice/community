@@ -1,0 +1,44 @@
+server:
+  port: 9603
+  servlet:
+    context-path: /service-product
+
+spring:
+  application:
+    name: service-product
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/community_store?createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:root}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+  flyway:
+    # One schema shared by all services (PoC decision); each service keeps its own history table.
+    table: flyway_schema_history_product
+    baseline-on-migrate: true
+    baseline-version: 0
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${JWK_SET_URI:http://localhost:9600/auth/.well-known/jwks.json}
+
+community:
+  services:
+    auth-url: ${COMMUNITY_SERVICES_AUTH_URL:http://localhost:9600/auth}
+    user-url: ${COMMUNITY_SERVICES_USER_URL:http://localhost:9601/service-user}
+    notification-url: ${COMMUNITY_SERVICES_NOTIFICATION_URL:http://localhost:9602/service-notification}
+  marketplace:
+    # false: an admin releases escrowed funds after the buyer confirms receipt (admins are notified).
+    auto-release-funds: ${COMMUNITY_MARKETPLACE_AUTO_RELEASE_FUNDS:false}
+    low-rating-threshold: ${COMMUNITY_MARKETPLACE_LOW_RATING_THRESHOLD:2.5}
+    low-rating-min-reviews: ${COMMUNITY_MARKETPLACE_LOW_RATING_MIN_REVIEWS:3}
+  system-client:
+    client-id: service-product
+    client-secret: ${SERVICE_PRODUCT_CLIENT_SECRET:service-product-dev-secret}
+
+logging:
+  level:
+    community.store: DEBUG

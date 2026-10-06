@@ -1,0 +1,3 @@
+community/store/auth/service/AuthServiceTest.class
+community/store/auth/jwt/JwtServiceTest.class
+community/store/auth/service/RegistrationPolicyTest.class

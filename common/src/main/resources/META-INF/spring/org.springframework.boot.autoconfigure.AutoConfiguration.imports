@@ -1,0 +1,3 @@
+community.store.common.web.CommonWebAutoConfiguration
+community.store.common.security.CommonSecurityAutoConfiguration
+community.store.common.client.SystemClientAutoConfiguration

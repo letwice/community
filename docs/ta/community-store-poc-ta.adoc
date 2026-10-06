@@ -1,0 +1,961 @@
+= Community Store — Technical Analysis (Proof of Concept)
+Lethu Dlamini <lethu.dlamini@wonderlabz.com>
+1.0, October 5, 2026: TA1 — DRAFT (IN REVIEW)
+:sectnums:
+:toc: left
+:toclevels: 4
+:toc-title: Table of Contents
+:icons: font
+:source-highlighter: coderay
+:table-caption!:
+
+:erd-include: ../includes/erd.puml
+:seq-include: ../includes/sequence.puml
+
+WARNING: This document lives outside `app-lithium-full` by design — it describes an independent proof-of-concept project (`community-store-poc`) that only *simulates* the Lithium service architecture and conventions. It is not part of, and must not be merged into, the Lithium codebase. +
+Approved Status: *IN REVIEW* — this status must only ever be changed by the human reviewer, never by an AI agent.
+
+WARNING: You may need graphviz installed to render the PlantUML diagrams locally (IntelliJ Asciidoctor/PlantUML plugins) — https://graphviz.gitlab.io/download/[Graphviz download].
+
+== Description
+
+=== Purpose of this document
+
+This Technical Analysis defines the architecture, data model, API contracts, UI flows, security model, and delivery plan for a *lightweight, laptop-only proof of concept (PoC)* of the Community Store Project. It is written to a level of detail sufficient for an AI coding agent (or a human developer) to implement each service directly, without further architectural decisions required.
+
+=== Source brief
+
+The originating brief is the "🛒 Community Store Project Proposal" supplied by the stakeholder (summarised in <<business>>). This TA translates that brief into an implementable, scoped-down PoC.
+
+=== Project identity
+
+[cols="1,3", options="header"]
+|===
+| Field | Value
+| Project name | `community-store-poc`
+| Repository | New, standalone local repository — *not* a module of `app-lithium-full`
+| Suggested local path | `~/Github/community-store-poc`
+| Lifecycle stage | Proof of Concept — runs on a single local laptop until stakeholder sign-off
+| Production scope | Out of scope for this TA. A follow-on TA is required before any cloud/shared-environment deployment.
+|===
+
+=== External dependencies
+
+==== Payment / banking
+* No real bank or PSP integration in this PoC. EFT + escrow is *fully simulated* inside `service-product` (see <<payments>>). This is a deliberate scope decision, not an oversight — flagged again in <<risks>>.
+
+==== Email / SMS
+* No real mail or SMS provider is integrated. University-email and business-registration verification are *mocked* (see <<auth>>). `service-notification` writes rich-inbox notifications to its own table and logs would-be email/SMS payloads to the console/log file instead of dispatching them.
+
+==== Identity verification
+* No integration with a university student registry or a business registration (CIPC-equivalent) registry. Verification is a manual backoffice action performed by a simulated "Admin" actor.
+
+[[business]]
+== Business
+
+=== Problem statement
+
+University campuses and their surrounding communities lack a single, trusted platform for affordable, sustainable trading and community engagement. Existing alternatives (informal social media groups, generic marketplaces) are fragmented and have no trust or verification mechanisms tailored to a campus community.
+
+=== Goals for the PoC
+
+* Prove the core trust loop: verified accounts → listings/activities → escrow-style transaction → mutual confirmation → review.
+* Prove the multi-role model (student, vendor, community leader, faculty) with materially different permissions and UI surfaces.
+* Prove a Lithium-like microservice decomposition can be stood up quickly and cheaply on a single laptop, as a feasibility signal before any investment in a production build.
+* Produce artifacts (this TA, ERDs, sequence diagrams, risk register, sprint plan, Postman collection) that support a legitimate sign-off decision.
+
+=== Explicit non-goals for the PoC
+
+* No real payments, no real money movement.
+* No production-grade security hardening, HA, autoscaling, or multi-environment pipeline.
+* No native iOS/Android app. See <<frontend-scope>> for what "mobile" means here.
+* No real email/SMS delivery.
+* No load/performance testing beyond basic smoke testing.
+
+=== Personas / roles
+
+[cols="1,3,3", options="header"]
+|===
+| Role | Can do | Cannot do
+| Student | Browse products & community activities; buy products; review products they bought and activities they attended | Post products or activities for sale/publication
+| Vendor | List/manage products; view sales dashboard (paid-out vs pending payouts); fulfil orders | Post community activities
+| Community Leader | Post/manage community activities | Sell products
+| Faculty | Everything a Vendor and a Community Leader can do (union of both role sets, per brief) | —
+| Admin *(implicit infra role, not in original brief but required to action verification)* | Verify/reject vendor, faculty and community-leader accounts via backoffice | Buy/sell/post on behalf of others
+|===
+
+NOTE: A user may hold more than one role concurrently (e.g. a Faculty member is simultaneously Vendor + Community Leader by definition; a Student could separately apply to become a Vendor). The data model treats role as a many-valued attribute per user (see `user_role`).
+
+[[frontend-scope]]
+=== Frontend scope decision
+
+The brief lists `service-ui (ui-network-admin)` using Java Swing/JavaFX as the only explicit frontend, but also describes a "mobile-first marketplace." For a laptop-only PoC these are reconciled as follows:
+
+[cols="1,2,2", options="header"]
+|===
+| Surface | Who uses it | Technology (PoC)
+| Mobile view | Student (primary), also usable read-only by any role | Mobile-first responsive web SPA (HTML/CSS/vanilla JS or a minimal framework), served statically, calling `service-product` / `service-user` / `service-notification` REST APIs directly. *Not* a native app — disproportionate effort for a laptop PoC; the mobile-first *experience* is proven via responsive web, not an app-store build.
+| Desktop view | Vendor, Community Leader, Faculty, Admin | JavaFX desktop client (`service-ui-desktop`, styled after Lithium's `ui-network-admin`), running locally against the same REST APIs.
+|===
+
+This is a scope decision made on the stakeholder's behalf and must be re-confirmed at sign-off; it is recorded here so the AI/human implementer does not need to re-litigate it.
+
+== Architecture
+
+=== Service inventory
+
+Mirrors `app-lithium-full` conventions (Maven multi-module per service, `/frontend`, `/backoffice`, `/system` API prefixing, Flyway migrations, `*Request`/`*Response` DTOs, no entity leakage) but scaled down for a PoC.
+
+[cols="2,2,3,1", options="header"]
+|===
+| Service | Responsibility | Owns schema/tables | Port (local)
+| `server-auth` | OAuth2 + JWT issuing/validation; registration hand-off; mocked verification-token issuance | `auth_credential`, `auth_verification_token` | 9600
+| `service-user` | User profile, roles, status, verification workflow, banking details, payout summaries, session/activity tracking | `user`, `user_role`, `user_banking_detail`, `user_payout_summary`, `user_session_activity` | 9601
+| `service-notification` | Notification creation & inbox (email/sms/rich-inbox simulated) | `notification` | 9602
+| `service-product` | Product listings, community activities, orders/escrow, reviews | `product`, `product_image`, `community_activity`, `order_transaction`, `product_review`, `activity_review` | 9603
+| `service-ui-desktop` | JavaFX desktop client for Vendor/Community Leader/Faculty/Admin | — (API consumer only) | n/a (desktop app)
+| `web-mobile` | Mobile-first responsive web SPA for Student (and general browsing) | — (API consumer only) | 9700 (static server)
+| `server-gateway` *(optional, see <<risks>>)* | Single entry point / reverse proxy, mirrors Lithium's `{{gateway}}` Postman pattern | — | 9500
+|===
+
+NOTE: Per the user's decision, all backend services share *one* MySQL schema/instance (`community_store`) for PoC simplicity — a deliberate, documented deviation from Lithium's "no shared databases between services" rule. Table ownership is still conceptually partitioned per service (see table above) so a later split into per-service schemas only requires a data migration, not a redesign.
+
+=== Technology stack
+
+[cols="1,3", options="header"]
+|===
+| Concern | Choice
+| Language/runtime | Java 17
+| Framework | Spring Boot 3.x (Spring Web, Spring Data JPA, Spring Security OAuth2 Resource Server)
+| Build | Maven multi-module (mirrors Lithium module layout: `community-store-poc/{server-auth,service-user,service-notification,service-product,service-ui-desktop}`)
+| Database | MySQL 8, single instance/schema, Flyway migrations (`V{n}__.sql`, no description in filename, backquoted identifiers, no schema name in SQL — per house convention)
+| Inter-service communication | Direct synchronous REST (no broker) — simplest viable option for a laptop PoC; no RabbitMQ/Kafka
+| Auth | OAuth2 (client_credentials for service-to-service, password/JWT bearer for user sessions), matching Lithium's auth pattern, with mocked identity verification
+| Desktop client | JavaFX (styled after `ui-network-admin`)
+| Mobile client | Responsive HTML/CSS/vanilla JS SPA (or a minimal framework such as Alpine.js) — mobile-first breakpoints, no build pipeline required
+| Local orchestration | Docker Compose (MySQL container + 4 Spring Boot service containers); JavaFX and the mobile SPA run outside Docker, directly on the host, pointed at the composed backend
+| Diagrams | PlantUML embedded in AsciiDoc (local rendering via IDE plugin; this repo is local-only so Kroki/GitHub rendering is not required but remains compatible)
+| API testing | Postman collection using the `{{gateway}}`-style variable pattern, even though there is no real gateway service in the minimal PoC (variable simply points at `server-auth`/direct service ports)
+|===
+
+=== Context diagram (C4 — Level 1)
+
+["plantuml"]
+----
+@startuml
+left to right direction
+actor Student
+actor Vendor
+actor "Community Leader" as CommunityLeader
+actor Faculty
+actor Admin
+
+rectangle "Community Store PoC" as System {
+}
+
+Student --> System : browse, buy, review
+Vendor --> System : list products, fulfil orders, view payouts
+CommunityLeader --> System : post activities
+Faculty --> System : list products + post activities
+Admin --> System : verify accounts
+@enduml
+----
+
+=== Container diagram (C4 — Level 2)
+
+["plantuml"]
+----
+@startuml
+skinparam componentStyle rectangle
+
+actor "Student (mobile web)" as student
+actor "Vendor / Community Leader / Faculty / Admin (desktop)" as deskuser
+
+node "web-mobile\n(responsive SPA)" as webmobile
+node "service-ui-desktop\n(JavaFX)" as uidesktop
+
+package "Backend (docker-compose, localhost)" {
+  component "server-auth\n:9600" as auth
+  component "service-user\n:9601" as svcuser
+  component "service-notification\n:9602" as svcnotif
+  component "service-product\n:9603" as svcproduct
+  database "MySQL 8\n(community_store schema)" as mysql
+}
+
+student --> webmobile
+deskuser --> uidesktop
+
+webmobile --> auth : OAuth2 token
+webmobile --> svcuser : profile, verification status
+webmobile --> svcproduct : browse, buy, review
+webmobile --> svcnotif : inbox
+
+uidesktop --> auth : OAuth2 token
+uidesktop --> svcuser : profile, banking details, payouts, verification queue
+uidesktop --> svcproduct : listings, orders, activities, sales summary
+uidesktop --> svcnotif : inbox
+
+svcproduct --> svcuser : lookup user by guid (REST, system API)
+svcproduct --> svcnotif : create notification (REST, system API)
+svcuser --> svcnotif : create notification (REST, system API)
+auth --> svcuser : create/lookup credential-linked user (REST, system API)
+
+auth --> mysql
+svcuser --> mysql
+svcnotif --> mysql
+svcproduct --> mysql
+@enduml
+----
+
+=== Deployment diagram (laptop, docker-compose)
+
+["plantuml"]
+----
+@startuml
+node "Developer laptop" {
+  node "Docker Desktop" {
+    node "mysql:8" as mysql_c
+    node "server-auth:9600" as auth_c
+    node "service-user:9601" as user_c
+    node "service-notification:9602" as notif_c
+    node "service-product:9603" as product_c
+  }
+  node "Host JVM" {
+    node "service-ui-desktop (JavaFX)" as ui_c
+  }
+  node "Host static server :9700" {
+    node "web-mobile (SPA)" as web_c
+  }
+  node "Browser (mobile viewport)" as browser
+}
+
+auth_c --> mysql_c
+user_c --> mysql_c
+notif_c --> mysql_c
+product_c --> mysql_c
+ui_c --> auth_c
+ui_c --> user_c
+ui_c --> product_c
+ui_c --> notif_c
+web_c --> auth_c
+web_c --> user_c
+web_c --> product_c
+web_c --> notif_c
+browser --> web_c
+@enduml
+----
+
+`docker-compose.yml` skeleton is provided in <<appendix-compose>>.
+
+== Data model
+
+All tables live in a single MySQL schema `community_store`. Flyway migrations are per-service but numbered independently per service module (`V1__.sql`, `V2__.sql`, ...), applied against the same schema. Every table that references a user does so via the immutable `guid`, never the auto-increment `id`, per Lithium convention (supports future split into per-service schemas/databases without FK coupling).
+
+=== ERD — User domain (owned by `server-auth` + `service-user`)
+
+["plantuml"]
+----
+include::../includes/erd.puml[]
+
+T(u, "user") {
+  pk(id) bigint(20) <<generated>>
+  --
+  nn(unique(guid)) varchar(36)
+  nn(unique(email)) varchar(255)
+  first_name varchar(100)
+  last_name varchar(100)
+  user_type enum('STUDENT','VENDOR','COMMUNITY_LEADER','FACULTY')
+  status enum('PENDING','ACTIVE','SUSPENDED','DEACTIVATED')
+  verification_status enum('UNVERIFIED','PENDING_REVIEW','VERIFIED','REJECTED')
+  created_at datetime
+  updated_at datetime
+  version int(11)
+}
+
+T(ur, "user_role\n one row per role held") {
+  pk(id) bigint(20) <<generated>>
+  --
+  fk(user_guid) varchar(36)
+  role enum('STUDENT','VENDOR','COMMUNITY_LEADER','FACULTY','ADMIN')
+  created_at datetime
+}
+note right of ur
+  unique(user_guid, role)
+end note
+
+T(ac, "auth_credential\n owned by server-auth") {
+  pk(id) bigint(20) <<generated>>
+  --
+  fk(user_guid) varchar(36)
+  password_hash varchar(255)
+  last_login_at datetime
+  failed_login_attempts int(11)
+}
+
+T(avt, "auth_verification_token\n mocked email/registration verification") {
+  pk(id) bigint(20) <<generated>>
+  --
+  fk(user_guid) varchar(36)
+  token varchar(64)
+  token_type enum('EMAIL_VERIFY','VENDOR_BUSINESS_VERIFY')
+  expires_at datetime
+  consumed_at datetime
+}
+
+T(ubd, "user_banking_detail\n vendor/faculty payout destination") {
+  pk(id) bigint(20) <<generated>>
+  --
+  nn(unique(user_guid)) varchar(36)
+  account_holder_name varchar(150)
+  bank_name varchar(100)
+  account_number_encrypted varchar(255)
+  branch_code varchar(20)
+  account_type enum('CHEQUE','SAVINGS')
+  verified bit(1)
+}
+
+T(ups, "user_payout_summary\n denormalised rollup for dashboard") {
+  pk(id) bigint(20) <<generated>>
+  --
+  nn(unique(user_guid)) varchar(36)
+  total_sales_count int(11)
+  total_sales_amount decimal(12,2)
+  total_paid_out_amount decimal(12,2)
+  total_pending_payout_amount decimal(12,2)
+  last_payout_at datetime
+}
+
+T(usa, "user_session_activity") {
+  pk(id) bigint(20) <<generated>>
+  --
+  fk(user_guid) varchar(36)
+  session_jti varchar(64)
+  login_at datetime
+  logout_at datetime
+  ip_address varchar(45)
+  user_agent varchar(255)
+  last_activity_at datetime
+}
+
+u -- ur
+u -- ac
+u -- avt
+u -- ubd
+u -- ups
+u -- usa
+----
+
+=== ERD — Notification domain (owned by `service-notification`)
+
+["plantuml"]
+----
+include::../includes/erd.puml[]
+
+T(n, "notification") {
+  pk(id) bigint(20) <<generated>>
+  --
+  fk(user_guid) varchar(36)
+  type enum('EMAIL','SMS','RICH_INBOX')
+  subject varchar(255)
+  body text
+  read_flag bit(1)
+  related_entity_type enum('ORDER','PRODUCT','ACTIVITY','ACCOUNT')
+  related_entity_id varchar(36)
+  dispatch_status enum('SIMULATED_SENT','FAILED','DELIVERED_INBOX')
+  created_at datetime
+  read_at datetime
+}
+note right of n
+  For type=EMAIL/SMS in this PoC,
+  dispatch_status is always SIMULATED_SENT
+  and the payload is written to the service log
+  instead of a real provider call.
+end note
+----
+
+=== ERD — Product domain (owned by `service-product`)
+
+["plantuml"]
+----
+include::../includes/erd.puml[]
+
+T(p, "product") {
+  pk(id) bigint(20) <<generated>>
+  --
+  nn(unique(guid)) varchar(36)
+  fk(vendor_user_guid) varchar(36)
+  title varchar(255)
+  description text
+  price decimal(10,2)
+  condition_type enum('NEW','SECOND_HAND')
+  category varchar(100)
+  stock_quantity int(11)
+  status enum('DRAFT','ACTIVE','SOLD_OUT','REMOVED')
+  created_at datetime
+  updated_at datetime
+}
+
+T(pi, "product_image") {
+  pk(id) bigint(20) <<generated>>
+  --
+  fk(product_guid) varchar(36)
+  url varchar(500)
+  sort_order int(11)
+}
+
+T(ca, "community_activity") {
+  pk(id) bigint(20) <<generated>>
+  --
+  nn(unique(guid)) varchar(36)
+  fk(organiser_user_guid) varchar(36)
+  title varchar(255)
+  description text
+  activity_date datetime
+  location varchar(255)
+  status enum('DRAFT','PUBLISHED','CANCELLED','COMPLETED')
+  created_at datetime
+}
+
+T(ot, "order_transaction\n sale transaction entry") {
+  pk(id) bigint(20) <<generated>>
+  --
+  nn(unique(guid)) varchar(36)
+  fk(buyer_user_guid) varchar(36)
+  fk(vendor_user_guid) varchar(36)
+  fk(product_guid) varchar(36)
+  quantity int(11)
+  unit_price decimal(10,2)
+  total_amount decimal(12,2)
+  escrow_status enum('CREATED','AWAITING_PAYMENT','ESCROW_HELD','SHIPPED','DELIVERED_CONFIRMED','FUNDS_RELEASED','DISPUTED','CANCELLED','REFUNDED')
+  escrow_reference_number varchar(32)
+  paid_at datetime
+  shipped_at datetime
+  delivery_confirmed_at datetime
+  funds_released_at datetime
+  created_at datetime
+}
+
+T(pr, "product_review") {
+  pk(id) bigint(20) <<generated>>
+  --
+  fk(product_guid) varchar(36)
+  fk(reviewer_user_guid) varchar(36)
+  fk(order_transaction_guid) varchar(36)
+  rating tinyint(1)
+  comment text
+  created_at datetime
+}
+note right of pr
+  reviewer must own a FUNDS_RELEASED
+  order_transaction for this product
+end note
+
+T(ar, "activity_review") {
+  pk(id) bigint(20) <<generated>>
+  --
+  fk(community_activity_guid) varchar(36)
+  fk(reviewer_user_guid) varchar(36)
+  rating tinyint(1)
+  comment text
+  created_at datetime
+}
+note right of ar
+  only allowed when activity_date is in the past
+end note
+
+p -- pi
+p -- ot
+p -- pr
+ca -- ar
+----
+
+== API contracts
+
+Path prefixes mirror Lithium convention: `/frontend/*` (self-service), `/backoffice/*` (admin/ops), `/system/*` (internal service-to-service, not exposed through any public gateway). All endpoints require a bearer JWT except where marked *(public)*.
+
+=== `server-auth`
+
+[cols="1,3,3,1", options="header"]
+|===
+| Method & Path | Request | Response | Auth
+| `POST /auth/oauth/token` | `grant_type`, `username`/`password` or `client_id`/`client_secret` (form) | `AccessTokenResponse{access_token, refresh_token, expires_in, scope, roles[]}` | *(public, credentials in body)*
+| `POST /auth/register` | `RegisterRequest{email, password, firstName, lastName, userType}` | `RegisterResponse{userGuid, verificationRequired:boolean}` | *(public)*
+| `POST /auth/verify-email` | `VerifyEmailRequest{token}` | `204 No Content` | *(public, token-based)*
+| `GET /auth/.well-known/jwks.json` | — | JWKS document | *(public)*
+|===
+
+=== `service-user`
+
+[cols="1,3,3,1", options="header"]
+|===
+| Method & Path | Request | Response | Auth
+| `GET /service-user/frontend/users/me` | — | `UserResponse{guid, email, firstName, lastName, roles[], status, verificationStatus}` | any authenticated user
+| `PUT /service-user/frontend/users/me` | `UpdateUserRequest{firstName, lastName}` | `UserResponse` | self
+| `POST /service-user/frontend/users/me/banking-details` | `BankingDetailRequest{accountHolderName, bankName, accountNumber, branchCode, accountType}` | `BankingDetailResponse{masked account info, verified:false}` | VENDOR, FACULTY
+| `GET /service-user/frontend/users/me/payout-summary` | — | `PayoutSummaryResponse{totalSalesCount, totalSalesAmount, totalPaidOutAmount, totalPendingPayoutAmount, lastPayoutAt}` | VENDOR, FACULTY
+| `GET /service-user/backoffice/users?status=PENDING_REVIEW&role=` | query params | `Page<UserResponse>` | ADMIN
+| `POST /service-user/backoffice/users/{guid}/verify` | — | `UserResponse{verificationStatus=VERIFIED, status=ACTIVE}` | ADMIN
+| `POST /service-user/backoffice/users/{guid}/reject` | `RejectUserRequest{reason}` | `UserResponse{verificationStatus=REJECTED}` | ADMIN
+| `GET /service-user/system/users/{guid}` | — | `UserSummaryResponse{guid, firstName, lastName, status, roles[]}` | service-to-service only
+| `GET /service-user/system/health` | — | `200 OK` | service-to-service only
+|===
+
+=== `service-notification`
+
+[cols="1,3,3,1", options="header"]
+|===
+| Method & Path | Request | Response | Auth
+| `POST /service-notification/system/notifications` | `CreateNotificationRequest{userGuid, type, subject, body, relatedEntityType, relatedEntityId}` | `NotificationResponse` | service-to-service only
+| `GET /service-notification/frontend/notifications?read=&page=` | query params | `Page<NotificationResponse>` | self
+| `PUT /service-notification/frontend/notifications/{id}/read` | — | `NotificationResponse{readFlag=true}` | self (owner only)
+| `GET /service-notification/frontend/notifications/unread-count` | — | `UnreadCountResponse{count}` | self
+|===
+
+=== `service-product`
+
+[cols="1,3,3,1", options="header"]
+|===
+| Method & Path | Request | Response | Auth
+| `POST /service-product/frontend/products` | `CreateProductRequest{title, description, price, condition, category, stockQuantity, imageUrls[]}` | `ProductResponse` | VENDOR, FACULTY (must be VERIFIED)
+| `PUT /service-product/frontend/products/{guid}` | `UpdateProductRequest{...}` | `ProductResponse` | owning VENDOR/FACULTY
+| `DELETE /service-product/frontend/products/{guid}` | — | `204 No Content` | owning VENDOR/FACULTY
+| `GET /service-product/frontend/products?category=&condition=&search=&page=` | query params | `Page<ProductResponse>` | any authenticated user
+| `GET /service-product/frontend/products/{guid}` | — | `ProductDetailResponse{..., averageRating, reviews[]}` | any authenticated user
+| `POST /service-product/frontend/orders` | `CreateOrderRequest{productGuid, quantity}` | `OrderResponse{guid, escrowStatus=AWAITING_PAYMENT, escrowReferenceNumber}` | STUDENT, FACULTY, VENDOR (as buyer)
+| `POST /service-product/frontend/orders/{guid}/confirm-payment` | — *(PoC stand-in for a PSP webhook — in this simulation the buyer self-attests "I have paid via EFT")* | `OrderResponse{escrowStatus=ESCROW_HELD}` | buyer (order owner)
+| `POST /service-product/frontend/orders/{guid}/mark-shipped` | — | `OrderResponse{escrowStatus=SHIPPED}` | vendor (order owner)
+| `POST /service-product/frontend/orders/{guid}/confirm-receipt` | — | `OrderResponse{escrowStatus=FUNDS_RELEASED}` | buyer (order owner); triggers payout summary update
+| `GET /service-product/frontend/orders?role=buyer\|vendor&page=` | query params | `Page<OrderResponse>` | self
+| `POST /service-product/frontend/products/{guid}/reviews` | `CreateReviewRequest{orderGuid, rating, comment}` | `ReviewResponse` | buyer with a FUNDS_RELEASED order for that product
+| `GET /service-product/frontend/products/{guid}/reviews` | — | `Page<ReviewResponse>` | any authenticated user
+| `POST /service-product/frontend/activities` | `CreateActivityRequest{title, description, activityDate, location}` | `ActivityResponse` | COMMUNITY_LEADER, FACULTY (must be VERIFIED)
+| `GET /service-product/frontend/activities?upcoming=true&page=` | query params | `Page<ActivityResponse>` | any authenticated user
+| `POST /service-product/frontend/activities/{guid}/reviews` | `CreateActivityReviewRequest{rating, comment}` | `ActivityReviewResponse` | any authenticated user, only if `activityDate` has passed
+| `GET /service-product/backoffice/vendors/{guid}/sales-summary` | — | `VendorSalesSummaryResponse` | ADMIN
+|===
+
+== RBAC matrix
+
+[cols="2,1,1,1,1,1", options="header"]
+|===
+| Capability | Student | Vendor | Community Leader | Faculty | Admin
+| Browse products / activities | ✅ | ✅ | ✅ | ✅ | ✅
+| Buy a product | ✅ | ✅ | ✅ | ✅ | —
+| Review a purchased product / attended activity | ✅ | ✅ | ✅ | ✅ | —
+| Create/manage product listings | ❌ | ✅ (once VERIFIED) | ❌ | ✅ (once VERIFIED) | —
+| View sales dashboard / payouts | ❌ | ✅ | ❌ | ✅ | —
+| Create/manage community activities | ❌ | ❌ | ✅ (once VERIFIED) | ✅ (once VERIFIED) | —
+| Verify/reject vendor, faculty, community-leader accounts | ❌ | ❌ | ❌ | ❌ | ✅
+|===
+
+[[payments]]
+== Escrow / EFT simulation
+
+=== State machine
+
+["plantuml"]
+----
+@startuml
+[*] --> CREATED
+CREATED --> AWAITING_PAYMENT : buyer checks out
+AWAITING_PAYMENT --> ESCROW_HELD : buyer self-attests EFT payment\n(simulated escrow account display)
+AWAITING_PAYMENT --> CANCELLED : buyer/vendor cancels before payment
+ESCROW_HELD --> SHIPPED : vendor marks shipped
+ESCROW_HELD --> DISPUTED : buyer raises dispute
+SHIPPED --> DELIVERED_CONFIRMED : buyer confirms receipt
+SHIPPED --> DISPUTED : buyer raises dispute
+DELIVERED_CONFIRMED --> FUNDS_RELEASED : automatic, on confirmation
+DISPUTED --> REFUNDED : admin resolution (manual, out of scope for automation)
+DISPUTED --> FUNDS_RELEASED : admin resolution (manual, out of scope for automation)
+FUNDS_RELEASED --> [*]
+CANCELLED --> [*]
+REFUNDED --> [*]
+@enduml
+----
+
+=== Simulation rules
+
+* On `POST /orders`, `service-product` generates a human-readable `escrowReferenceNumber` (e.g. `ESC-000123`) and returns it to the buyer — this stands in for "display escrow account number."
+* There is no real bank integration: `confirm-payment` is a self-attestation endpoint (buyer declares they have paid). This is clearly labelled in the UI as *simulated* so it cannot be mistaken for a production payment flow.
+* Vendor cannot call `mark-shipped` until `ESCROW_HELD`.
+* `confirm-receipt` is the only trigger that moves money (conceptually) — it atomically sets `FUNDS_RELEASED`, stamps `funds_released_at`, and updates `user_payout_summary` for the vendor (`total_paid_out_amount += total_amount`, `total_pending_payout_amount -= total_amount`).
+* A vendor cannot register/list products until `verification_status = VERIFIED` and must have an on-file `user_banking_detail` row (enforced at `POST /service-product/frontend/products`, checked via the `service-user` `/system/users/{guid}` call — extend that internal endpoint to also return `hasBankingDetails:boolean`).
+
+== Key sequence diagrams
+
+=== Registration & mocked verification
+
+["plantuml"]
+----
+include::../includes/sequence.puml[]
+
+a("Vendor", vendor)
+p("server-auth", auth)
+p("service-user", svcuser)
+p("service-notification", notif)
+a("Admin", admin)
+
+vendor -> auth++: POST /auth/register {email, password, userType=VENDOR}
+auth -> svcuser++: create user (status=PENDING, verification=UNVERIFIED)
+svcuser --> auth--: UserResponse{guid}
+auth -> auth: issue mocked verification token (logged, not emailed)
+auth --> vendor--: RegisterResponse{userGuid, verificationRequired=true}
+
+vendor -> auth++: POST /auth/verify-email {token}
+auth -> svcuser++: mark email verified
+svcuser --> auth--: ok
+auth --> vendor--: 204
+
+vendor -> svcuser++: POST /users/me/banking-details
+svcuser --> vendor--: BankingDetailResponse{verified=false}
+
+admin -> svcuser++: GET /backoffice/users?status=PENDING_REVIEW
+svcuser --> admin--: Page<UserResponse>
+admin -> svcuser++: POST /backoffice/users/{guid}/verify
+svcuser -> notif++: POST /system/notifications {type=RICH_INBOX, "You're verified!"}
+notif --> svcuser--: ok
+svcuser --> admin--: UserResponse{verificationStatus=VERIFIED, status=ACTIVE}
+----
+
+=== Purchase → escrow → release
+
+["plantuml"]
+----
+include::../includes/sequence.puml[]
+
+a("Student (buyer)", buyer)
+p("service-product", product)
+p("service-user", svcuser)
+p("service-notification", notif)
+a("Vendor", vendor)
+
+buyer -> product++: POST /orders {productGuid, quantity}
+product -> svcuser++: GET /system/users/{vendorGuid}
+svcuser --> product--: UserSummaryResponse
+product -> product: create order_transaction\nescrowStatus=AWAITING_PAYMENT\ngenerate escrowReferenceNumber
+product -> notif++: notify vendor "new order"
+notif --> product--: ok
+product --> buyer--: OrderResponse{escrowReferenceNumber}
+
+buyer -> product++: POST /orders/{guid}/confirm-payment
+product -> product: escrowStatus=ESCROW_HELD
+product -> notif++: notify vendor "payment received, please ship"
+notif --> product--: ok
+product --> buyer--: OrderResponse{ESCROW_HELD}
+
+vendor -> product++: POST /orders/{guid}/mark-shipped
+product -> product: escrowStatus=SHIPPED
+product -> notif++: notify buyer "shipped"
+notif --> product--: ok
+product --> vendor--: OrderResponse{SHIPPED}
+
+buyer -> product++: POST /orders/{guid}/confirm-receipt
+product -> product: escrowStatus=FUNDS_RELEASED\nupdate vendor payout summary
+product -> svcuser++: PUT (internal) payout summary delta
+svcuser --> product--: ok
+product -> notif++: notify vendor "funds released"
+notif --> product--: ok
+product --> buyer--: OrderResponse{FUNDS_RELEASED}
+----
+
+=== Community activity posting & review
+
+["plantuml"]
+----
+include::../includes/sequence.puml[]
+
+a("Community Leader", leader)
+p("service-product", product)
+a("Student", student)
+
+leader -> product++: POST /activities {title, activityDate, location}
+product --> leader--: ActivityResponse{status=PUBLISHED}
+
+student -> product++: GET /activities?upcoming=true
+product --> student--: Page<ActivityResponse>
+
+... time passes, activityDate is now in the past ...
+
+student -> product++: POST /activities/{guid}/reviews {rating, comment}
+product -> product: validate activityDate < now
+product --> student--: ActivityReviewResponse
+----
+
+== UI wireframes
+
+=== Mobile (Student) — key screens
+
+["plantuml"]
+----
+@startuml
+salt
+{
+  {T
+   + Community Store
+  }
+  { "🔍 Search products/activities" }
+  {
+    {* Category ▾ | Condition ▾ | Price ▾ }
+  }
+  {
+    [Product card: image, title, price, NEW/SECOND-HAND badge] |
+    [Product card] |
+    [Product card]
+  }
+  {
+   [🏠 Home] | [🛍 Browse] | [📋 Bulletin] | [🛒 Cart] | [🔔 Inbox]
+  }
+}
+@enduml
+----
+
+["plantuml"]
+----
+@startuml
+salt
+{
+  {T
+   + Product Detail
+  }
+  { [image carousel] }
+  "Vintage Textbook: Intro to Economics"
+  "R150  •  SECOND-HAND"
+  "⭐⭐⭐⭐☆ (12 reviews)"
+  { [ Add to Cart ] }
+  { [ View seller: VerifiedVendorBadge ] }
+  { "Reviews" |
+    "⭐⭐⭐⭐⭐ \"Great condition!\" — Student A" }
+}
+@enduml
+----
+
+["plantuml"]
+----
+@startuml
+salt
+{
+  {T
+   + Checkout
+  }
+  "Order summary: 1x Textbook — R150"
+  {
+   "Escrow reference: ESC-000123"
+   "Please EFT R150 to the escrow account shown above."
+  }
+  { [ I have paid ] }
+  "Funds are only released to the seller once you confirm receipt."
+}
+@enduml
+----
+
+=== Desktop (Vendor/Faculty) — key screens
+
+["plantuml"]
+----
+@startuml
+salt
+{
+  {T
+   + Vendor Dashboard — service-ui-desktop
+  }
+  {
+   { "Total Sales" | "R12,450" } |
+   { "Paid Out" | "R9,200" } |
+   { "Pending Payout" | "R3,250" }
+  }
+  {
+   "Orders" |
+   {# Order | Product | Status | Amount
+      ESC-000123 | Textbook | SHIPPED | R150
+      ESC-000119 | Calculator | FUNDS_RELEASED | R300 }
+  }
+  { [ New Listing ] | [ Banking Details ] }
+}
+@enduml
+----
+
+["plantuml"]
+----
+@startuml
+salt
+{
+  {T
+   + Admin — Verification Queue
+  }
+  {# User | Type | Status
+     J. Dlamini | VENDOR | PENDING_REVIEW
+     T. Nkosi | FACULTY | PENDING_REVIEW }
+  { [ Verify ] | [ Reject ] }
+}
+@enduml
+----
+
+[[auth]]
+== Security
+
+* *AuthN*: OAuth2 password/client_credentials grants against `server-auth`, JWT bearer tokens validated as Spring Security OAuth2 Resource Server on every downstream service.
+* *AuthZ*: role claims embedded in the JWT (`STUDENT`, `VENDOR`, `COMMUNITY_LEADER`, `FACULTY`, `ADMIN`); enforced via `@PreAuthorize` at controller level, never in the controller body.
+* *Mocked verification*: clearly labelled in UI and logs as simulated — no real university/business registry is consulted. This must not be presented to stakeholders as production-equivalent trust.
+* *Banking details*: `account_number` stored encrypted at rest (e.g. AES-256 via Jasypt or a `@Convert` JPA attribute converter) even though this is a PoC — handling real-shaped PII data with the right pattern is itself part of what's being proven.
+* *DTO boundary*: strictly enforced per house rule — no entity ever appears in a controller signature.
+* *Input validation*: `@Valid` on all `*Request` DTOs; `LIKE` search on product title uses `starts-with` (`LIKE 'value%'`), never `%value%`.
+
+== Non-functional requirements (PoC-scoped)
+
+[cols="1,3", options="header"]
+|===
+| Attribute | PoC target
+| Performance | Not benchmarked; smoke-tested for "feels responsive" on a single laptop with seed data (~50 products, ~20 users)
+| Availability | None — single laptop, no HA, acceptable to restart containers
+| Observability | `log.debug` for flow, `log.info` for state transitions (e.g. escrow status changes), `log.warn`/`log.error` per house convention; no external APM
+| Data retention | Ephemeral — database can be reset between demo runs via `docker compose down -v`
+| Accessibility | Best-effort responsive layout only; no WCAG audit for a PoC
+|===
+
+== Testing strategy
+
+* *Unit tests*: each service, standard JUnit5 + Mockito, covering the escrow state machine transitions and RBAC guard conditions in particular (these are the two areas most likely to hide a logic bug).
+* *Integration tests*: Spring Boot `@SpringBootTest` + Testcontainers MySQL per service, covering the full registration → verification → listing → order → review happy path.
+* *Manual/API testing*: Postman collection (`docs/api/community-store-poc.postman_collection.json`, to be authored alongside implementation) exercising every endpoint in <<API contracts>>, using the gateway-variable pattern (`{{gateway}}` pointed at each service's local port in the absence of a real gateway).
+* *No* automated UI testing of the JavaFX client or the mobile SPA in this PoC — manual click-through against the acceptance criteria below is sufficient.
+
+== Acceptance criteria (PoC sign-off)
+
+* [ ] A Student can register, browse products and activities, buy a product, and leave a review after `FUNDS_RELEASED`.
+* [ ] A Vendor can register, be verified by an Admin, add banking details, list a product, fulfil an order end-to-end, and see their dashboard numbers update correctly.
+* [ ] A Community Leader can register, be verified, and publish an activity that a Student can later review once its date has passed.
+* [ ] A Faculty user can do everything a Vendor and a Community Leader can.
+* [ ] All data lives in MySQL via Flyway-managed migrations; the whole stack starts via `docker compose up` plus two locally-run clients (JavaFX, mobile SPA).
+* [ ] This TA, the ERDs, the sequence diagrams, and the risk register are reviewed and signed off by the stakeholder before any production-track TA is started.
+
+== Project plan (PoC phase)
+
+Assumption: solo/small team (1–3 developers), 4–6 week timeline.
+
+[cols="1,2,4", options="header"]
+|===
+| Week | Phase | Key activities / deliverables
+| 1 | Requirements & design | This TA finalised and signed off; environment bootstrap (docker-compose, Flyway baseline); Postman collection skeleton
+| 2 | Core services — User & Auth | `server-auth`, `service-user` implemented: register, verify (mocked), roles, banking details; unit + integration tests
+| 3 | Core services — Product & Notification | `service-product` (listings, activities), `service-notification` (inbox); wire system-to-system REST calls
+| 4 | Escrow flow & dashboards | Order/escrow state machine, payout summary rollups, Vendor dashboard data; reviews
+| 5 | Clients | `service-ui-desktop` (JavaFX) for Vendor/Community Leader/Faculty/Admin; `web-mobile` responsive SPA for Student
+| 6 | Hardening & sign-off | End-to-end manual test against acceptance criteria; risk register review; stakeholder demo; sign-off decision
+|===
+
+=== Deliverables
+
+* This Technical Analysis (`docs/ta/community-store-poc-ta.adoc`) with embedded ERDs, sequence diagrams, state machine, and wireframes.
+* Source code for `server-auth`, `service-user`, `service-notification`, `service-product`, `service-ui-desktop`, `web-mobile`.
+* `docker-compose.yml` for one-command local backend bring-up (<<appendix-compose>>).
+* Postman collection covering all documented endpoints.
+* Risk register (below).
+* Sprint/weekly status notes (lightweight — a running log is sufficient for a solo/small-team PoC, not full Scrum ceremony artifacts).
+* Final PoC evaluation against the acceptance criteria, to support the sign-off decision.
+
+[[risks]]
+=== Risk register
+
+[cols="3,1,1,4", options="header"]
+|===
+| Risk | Likelihood | Impact | Mitigation
+| Simulated escrow/payment is mistaken by stakeholders for a production-ready payment flow | Medium | High | Explicit "SIMULATED" labelling in UI and in this TA (<<payments>>); sign-off checklist calls this out by name
+| Mocked identity verification gives false confidence in trust/safety story | Medium | High | Documented as a non-goal (<<business>>); a follow-on TA must specify a real registry/KYC integration before production
+| Shared single-schema database becomes entangled and hard to split later | Low | Medium | Tables are already partitioned conceptually per owning service and keyed by `guid`, not FK to `id`, to ease a future split
+| Solo/small-team timeline slips given breadth of 4 services + 2 clients | Medium | Medium | Desktop and mobile clients are thin REST consumers by design; if time is short, Postman/manual API testing can substitute for one client at demo time
+| JavaFX skill/tooling availability | Low | Medium | Fallback: demo the desktop role flows via Postman + the mobile SPA if JavaFX setup stalls
+| No automated UI tests | High | Low | Accepted for PoC scope; mitigated by backend unit/integration test coverage on the logic that actually matters (escrow state machine, RBAC)
+| Single laptop = single point of failure for the whole PoC | High (by design) | Low | Acceptable for PoC; `docker compose down -v` / `up` gives a clean reset before any demo
+| Scope creep toward production concerns (HA, real payments, real verification) during the PoC window | Medium | Medium | This TA's non-goals section is the standing reference; any such request requires a new TA, not an in-flight scope change
+|===
+
+[[appendix-compose]]
+== Appendix A — `docker-compose.yml` skeleton
+
+[source,yaml]
+----
+version: "3.8"
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: community_store
+    ports:
+      - "3306:3306"
+    volumes:
+      - community-store-mysql-data:/var/lib/mysql
+
+  server-auth:
+    build: ./server-auth
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/community_store
+    ports:
+      - "9600:9600"
+    depends_on:
+      - mysql
+
+  service-user:
+    build: ./service-user
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/community_store
+    ports:
+      - "9601:9601"
+    depends_on:
+      - mysql
+
+  service-notification:
+    build: ./service-notification
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/community_store
+    ports:
+      - "9602:9602"
+    depends_on:
+      - mysql
+
+  service-product:
+    build: ./service-product
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/community_store
+    ports:
+      - "9603:9603"
+    depends_on:
+      - mysql
+
+volumes:
+  community-store-mysql-data:
+----
+
+== Appendix B — Suggested repository layout
+
+[source]
+----
+community-store-poc/
+├── docs/
+│   ├── ta/community-store-poc-ta.adoc        (this document)
+│   ├── includes/{erd.puml,sequence.puml}
+│   ├── diagrams/                              (any diagram extracted to its own .puml for reuse)
+│   ├── api/community-store-poc.postman_collection.json
+│   └── db/                                     (Flyway migration review copies, optional)
+├── server-auth/
+│   └── src/main/java/community/store/auth/...
+├── service-user/
+│   ├── src/main/java/community/store/user/...
+│   └── src/main/resources/db/migration/V1__.sql ...
+├── service-notification/
+│   └── src/main/java/community/store/notification/...
+├── service-product/
+│   └── src/main/java/community/store/product/...
+├── service-ui-desktop/
+│   └── src/main/java/community/store/ui/desktop/...   (JavaFX)
+├── web-mobile/
+│   └── index.html, css/, js/                            (static SPA, mobile-first)
+└── docker-compose.yml
+----
+
+== Appendix C — Open questions for stakeholder sign-off
+
+* Confirm the frontend split (mobile web for Student vs JavaFX desktop for Vendor/Community Leader/Faculty/Admin) is acceptable, or whether a native mobile app is actually required before investment proceeds.
+* Confirm "fully simulated" escrow is acceptable for this phase, and agree the criteria that would trigger a real PSP-sandbox follow-on TA.
+* Confirm the single-schema database decision is acceptable for the PoC, understanding the documented migration path to per-service schemas later.
+* Confirm there is no requirement for RabbitMQ/Kafka-style async messaging in this phase (direct REST is used throughout).

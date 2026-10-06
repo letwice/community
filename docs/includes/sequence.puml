@@ -1,0 +1,4 @@
+!define p(name, alias) participant "name" as alias << (L,#AAFFCC) >>
+!define q(name, alias) queue "name" as alias << (L,#AAFFCC) >>
+!define pn(name, alias) participant "name" as alias << (L,#FFAAAA) >>
+!define a(name, alias) actor "name" as alias << (U,#999999) >>

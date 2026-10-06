@@ -1,0 +1,41 @@
+server:
+  port: 9601
+  servlet:
+    context-path: /service-user
+
+spring:
+  application:
+    name: service-user
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/community_store?createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:root}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+  flyway:
+    # One schema shared by all services (PoC decision); each service keeps its own history table.
+    table: flyway_schema_history_user
+    baseline-on-migrate: true
+    baseline-version: 0
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${JWK_SET_URI:http://localhost:9600/auth/.well-known/jwks.json}
+
+community:
+  services:
+    auth-url: ${COMMUNITY_SERVICES_AUTH_URL:http://localhost:9600/auth}
+    notification-url: ${COMMUNITY_SERVICES_NOTIFICATION_URL:http://localhost:9602/service-notification}
+  system-client:
+    client-id: service-user
+    client-secret: ${SERVICE_USER_CLIENT_SECRET:service-user-dev-secret}
+  user:
+    # PoC-only development key. Override via COMMUNITY_USER_ENCRYPTION_KEY for anything shared.
+    encryption-key: ${COMMUNITY_USER_ENCRYPTION_KEY:GI78pck3q9utqwEFugNtpndt05HZEKvIKR6D499L3Xk=}
+
+logging:
+  level:
+    community.store: DEBUG

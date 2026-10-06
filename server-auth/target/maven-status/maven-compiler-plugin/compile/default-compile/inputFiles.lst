@@ -1,0 +1,17 @@
+/Users/lethu.dlamini/Github/community-store-poc/server-auth/src/main/java/community/store/auth/AuthApplication.java
+/Users/lethu.dlamini/Github/community-store-poc/server-auth/src/main/java/community/store/auth/config/AuthProperties.java
+/Users/lethu.dlamini/Github/community-store-poc/server-auth/src/main/java/community/store/auth/config/AuthSecurityConfig.java
+/Users/lethu.dlamini/Github/community-store-poc/server-auth/src/main/java/community/store/auth/domain/AuthCredential.java
+/Users/lethu.dlamini/Github/community-store-poc/server-auth/src/main/java/community/store/auth/domain/AuthCredentialRepository.java
+/Users/lethu.dlamini/Github/community-store-poc/server-auth/src/main/java/community/store/auth/domain/AuthVerificationToken.java
+/Users/lethu.dlamini/Github/community-store-poc/server-auth/src/main/java/community/store/auth/domain/AuthVerificationTokenRepository.java
+/Users/lethu.dlamini/Github/community-store-poc/server-auth/src/main/java/community/store/auth/domain/TokenType.java
+/Users/lethu.dlamini/Github/community-store-poc/server-auth/src/main/java/community/store/auth/dto/AccessTokenResponse.java
+/Users/lethu.dlamini/Github/community-store-poc/server-auth/src/main/java/community/store/auth/dto/RegisterRequest.java
+/Users/lethu.dlamini/Github/community-store-poc/server-auth/src/main/java/community/store/auth/dto/RegisterResponse.java
+/Users/lethu.dlamini/Github/community-store-poc/server-auth/src/main/java/community/store/auth/dto/VerifyEmailRequest.java
+/Users/lethu.dlamini/Github/community-store-poc/server-auth/src/main/java/community/store/auth/jwt/JwtKeyProvider.java
+/Users/lethu.dlamini/Github/community-store-poc/server-auth/src/main/java/community/store/auth/jwt/JwtService.java
+/Users/lethu.dlamini/Github/community-store-poc/server-auth/src/main/java/community/store/auth/service/AuthService.java
+/Users/lethu.dlamini/Github/community-store-poc/server-auth/src/main/java/community/store/auth/service/RegistrationPolicy.java
+/Users/lethu.dlamini/Github/community-store-poc/server-auth/src/main/java/community/store/auth/web/AuthController.java

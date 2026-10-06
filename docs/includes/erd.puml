@@ -1,0 +1,8 @@
+skinparam linetype ortho
+!define T(name,desc) class name as "desc" << (T,#98FB98) >>
+!define TN(name,desc) class name as "desc" << (T,#DC143C) >>
+
+!define pk(x) <b>x</b>
+!define fk(x) <color:purple><i>x</i></color>
+!define unique(x) <color:green>x</color>
+!define nn(x) <u>x</u>

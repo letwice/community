@@ -1,0 +1,37 @@
+server:
+  port: 9602
+  servlet:
+    context-path: /service-notification
+
+spring:
+  application:
+    name: service-notification
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/community_store?createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:root}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+  flyway:
+    # One schema shared by all services (PoC decision); each service keeps its own history table.
+    table: flyway_schema_history_notification
+    baseline-on-migrate: true
+    baseline-version: 0
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${JWK_SET_URI:http://localhost:9600/auth/.well-known/jwks.json}
+
+community:
+  services:
+    auth-url: ${COMMUNITY_SERVICES_AUTH_URL:http://localhost:9600/auth}
+  system-client:
+    client-id: service-notification
+    client-secret: ${SERVICE_NOTIFICATION_CLIENT_SECRET:service-notification-dev-secret}
+
+logging:
+  level:
+    community.store: DEBUG

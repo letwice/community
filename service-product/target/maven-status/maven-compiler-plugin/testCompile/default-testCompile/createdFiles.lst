@@ -1,0 +1,10 @@
+community/store/product/service/RatingWatchTest$1.class
+community/store/product/domain/EscrowStatusTest.class
+community/store/product/domain/OrderTransactionTest.class
+community/store/product/domain/ProductRepositoryIntegrationTest.class
+community/store/product/service/AccountChecksTest.class
+community/store/product/service/OrderServiceTest.class
+community/store/product/web/ControllerSecurityTest.class
+community/store/product/domain/ProductTest.class
+community/store/product/service/ActivityServiceTest.class
+community/store/product/service/RatingWatchTest.class

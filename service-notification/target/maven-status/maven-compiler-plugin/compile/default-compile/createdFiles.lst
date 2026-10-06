@@ -1,0 +1,11 @@
+community/store/notification/dto/NotificationResponse.class
+community/store/notification/web/FrontendNotificationController.class
+community/store/notification/NotificationApplication.class
+community/store/notification/domain/NotificationRepository.class
+community/store/notification/domain/RelatedEntityType.class
+community/store/notification/web/SystemNotificationController.class
+community/store/notification/service/NotificationService.class
+community/store/notification/domain/NotificationType.class
+community/store/notification/domain/Notification.class
+community/store/notification/dto/UnreadCountResponse.class
+community/store/notification/domain/DispatchStatus.class

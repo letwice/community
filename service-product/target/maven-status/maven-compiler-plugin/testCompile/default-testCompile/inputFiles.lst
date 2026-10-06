@@ -1,0 +1,9 @@
+/Users/lethu.dlamini/Github/community-store-poc/service-product/src/test/java/community/store/product/domain/EscrowStatusTest.java
+/Users/lethu.dlamini/Github/community-store-poc/service-product/src/test/java/community/store/product/domain/OrderTransactionTest.java
+/Users/lethu.dlamini/Github/community-store-poc/service-product/src/test/java/community/store/product/domain/ProductRepositoryIntegrationTest.java
+/Users/lethu.dlamini/Github/community-store-poc/service-product/src/test/java/community/store/product/domain/ProductTest.java
+/Users/lethu.dlamini/Github/community-store-poc/service-product/src/test/java/community/store/product/service/AccountChecksTest.java
+/Users/lethu.dlamini/Github/community-store-poc/service-product/src/test/java/community/store/product/service/ActivityServiceTest.java
+/Users/lethu.dlamini/Github/community-store-poc/service-product/src/test/java/community/store/product/service/OrderServiceTest.java
+/Users/lethu.dlamini/Github/community-store-poc/service-product/src/test/java/community/store/product/service/RatingWatchTest.java
+/Users/lethu.dlamini/Github/community-store-poc/service-product/src/test/java/community/store/product/web/ControllerSecurityTest.java
